@@ -307,6 +307,60 @@ static std::unique_ptr<ExprAST> ParseExpression() {
     return ParseBinOpRHS(0, std::move(LHS));
 }
 
+// prototype
+//   ::= id'(' id* ')'
+static std::unique_ptr<PrototypeAST> ParsePrototype() {
+    if (CurTok != tok_identifier)
+        return LogErrorP("Expected function name in prototype");
+
+    std::string FnName = IdentifierStr;
+    getNextToken();
+
+    if (CurTok != '(')
+        return LogErrorP("Expected '(' in prototype");
+
+    // Read the list of argument names.
+    std::vector<std::string> ArgNames;
+    while (getNextToken() == tok_identifier)
+        ArgNames.push_back(IdentifierStr);
+
+    if (CurTok != ')')
+        return LogErrorP("Expected ')' in prototype");
+
+    // success.
+    getNextToken(); // eat ')'
+
+    return llvm::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
+}
+
+// definition ::= 'def' prototype expression
+static std::unique_ptr<FunctionAST> ParseDefinition() {
+    getNextToken(); // eat def.
+    auto Proto = ParsePrototype();
+    if (!Proto) return nullptr;
+
+    if (auto E = ParseExpression())
+        return llvm::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+
+    return nullptr;
+}
+
+// external ::= 'extern' prototype
+static std::unique_ptr<PrototypeAST> ParseExtern() {
+    getNextToken(); // eat extern.
+    return ParsePrototype();
+}
+
+// toplevelexpr ::= expression
+static std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
+    if (auto E = ParseExpression()) {
+        // Make an anonymous proto.
+        auto Proto = llvm::make_unique<PrototypeAST>("", std::vector<std::string>());
+        return llvm::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+    }
+    return nullptr;
+}
+
 
 //
 // Main driver code.
