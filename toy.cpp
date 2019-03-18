@@ -1,3 +1,10 @@
+#include "llvm/ADT/STLExtras.h"
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -170,6 +177,20 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
 // Parser
 //---------------------------------------------------------------------------------
 
+// BinopPrecedence - This holds the precedence for each binary operator that is defined.
+static std::map<char, int> BinopPrecedence;
+
+// GetTokPrecedence - Get the precedence of the pending binary operator token.
+static int GetTokPrecedence() {
+    if (!isascii(CurTok))
+        return -1;
+
+    // Make sure it's a declared binop.
+    int TokPrec = BinopPrecedence[CurTok];
+    if (TokPrec < 0) return -1;
+    return TokPrec;
+}
+
 // numberexpr ::= number
 static std::unique_ptr<ExprAST> ParseNumberExpr() {
     auto Result = llvm::make_unique<NumberExprAST>(NumVal);
@@ -240,4 +261,61 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
     case '(':
         return ParseParenExpr();
     }
+}
+
+// binoprhs
+//   ::=('+' primary)*
+static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS) {
+    // if this is binop, find its precedence.
+    while (true) {
+        int TokPrec = GetTokPrecedence();
+
+        // if this is a binop that binds at least as tighly as the current binop,
+        // consume it, otherwise we are done.
+        if (TokPrec < ExprPrec)
+            return LHS;
+
+        // Okay, we know this is a binop.
+        int BinOp = CurTok;
+        getNextToken();
+
+        // Parse the primary expression after the binary operator.
+        auto RHS = ParsePrimary();
+        if (!RHS)
+            return nullptr;
+
+        // If BinOp binds less tighly with RHS than the operator after RHS,
+        // let the pending operator take RHS as its LHS.
+        int NextPrec = GetTokPrecedence();
+        if (TokPrec < NextPrec) {
+            RHS = ParseBinOpRHS(TokPrec + 1, std::move(RHS))
+            if (!RHS)
+                return nullptr;
+        }
+
+        // Merge LHS/RHS.
+        LHS = llvm::make_unique<BinaryExprAST>(BinOp, std::move(LHS), std::move(RHS));
+    }
+}
+
+// expression
+//   ::= primary binoprhs
+static std::unique_ptr<ExprAST> ParseExpression() {
+    auto LHS = ParsePrimary();
+    if (!LHS)
+        return nullptr;
+    return ParseBinOpRHS(0, std::move(LHS));
+}
+
+
+//
+// Main driver code.
+//
+int main() {
+    // Install standard binary operators.
+    // 1 is lowest precedence.
+    BinopPrecedence['<'] = 10;
+    BinopPrecedence['+'] = 20;
+    BinopPrecedence['-'] = 30;
+    BinopPrecedence['*'] = 40;
 }
