@@ -89,7 +89,8 @@ namespace {
 /// ExprAST - Base class for all expression nodes.
 class ExprAST {
 public:
-  virtual ~ExprAST() = default;
+  virtual ~ExprAST() {}
+  virtual Value *codegen() = 0;
 };
 
 /// NumberExprAST - Expression class for numeric literals like "1.0".
@@ -98,6 +99,7 @@ class NumberExprAST : public ExprAST {
 
 public:
   NumberExprAST(double Val) : Val(Val) {}
+  virtual Value *codegen();
 };
 
 /// VariableExprAST - Expression class for referencing a variable, like "a".
@@ -422,6 +424,16 @@ static void MainLoop() {
       break;
     }
   }
+}
+
+static LLVMContext TheContext;
+static IRBuilder<> Builder(TheContext);
+static std::unique_ptr<Module> TheModule;
+static std::map<std::string, Value *> NamedValues;
+
+Value *LogErrorV(const char *Str) {
+  LogError(Str);
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
