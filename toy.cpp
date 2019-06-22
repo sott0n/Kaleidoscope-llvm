@@ -506,6 +506,9 @@ Function *FunctionAST::codegen() {
     // Validate the generated code, checking for consistency.
     verifyFunction(*TheFunction);
 
+    // Optimize the function
+    TheFPM->run(*TheFunction);
+
     return TheFunction;
   }
 
@@ -513,6 +516,30 @@ Function *FunctionAST::codegen() {
   TheFunction->eraseFromParent();
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// JIT
+//===----------------------------------------------------------------------===//
+
+void InitializeModuleAndPassManager(void) {
+  // Open a new module.
+  TheModule = llvm::make_unique<Module>("my cool jit", TheContext);
+
+  // Create a new pass manager attached to it.
+  TheFPM = llvm::make_unique<FunctionPassManager>(TheModule.get());
+
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  TheFPM->add(createInstructionCombiningPass());
+  // Reassociate expressions.
+  TheFPM->add(createReassociatePass());
+  // Eliminate Common SubExpressions.
+  TheFPM->add(createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  TheFPM->add(createCFGSimlificationPass());
+
+  TheFPM->doInitialization();
+}
+
 
 //===----------------------------------------------------------------------===//
 // Top-Level parsing and JIT Driver
