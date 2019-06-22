@@ -496,6 +496,60 @@ Value *CallExprAST::codegen() {
   return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
+Function *PrototypeAST::codegen() {
+  // Make the function type: double(double,double) etc.
+  std::vector<Type*> Double(Args.size(),
+                Type::getDoubleTy(TheContext));
+  FunctionType *FT =
+    FunctionType::get(Type::getDoubleTy(TheContext), Double, false);
+
+  Function *F =
+    Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
+
+  // Set names for all arguments.
+  unsighned ldx = 0;
+  for (auto &Arg : F->args())
+    Arg.setName(Args[ldx++]);
+
+  return F;
+}
+
+Funcion *FunctionAST::codegen(){
+  // First, check for an existing function from a previous 'extern' declaration.
+  Function *TheFunction = TheModule->getFunction(Proto->getName());
+
+  if (!TheFunction)
+    TheFunction = Proto->codegen();
+
+  if (!TheFunction)
+    return nullptr;
+
+  if (!TheFunction->empty())
+    return (Function*)LogErrorV("Function cannot be redefined.");
+
+  // Create a new basic block to start insertion into.
+  BasicBlock *BB = BasicBlock::Create(TheContext, "entry", TheFunction);
+  Builder.SetInsertPoint(BB);
+
+  // Record the function arguments in the NamedValues map.
+  NamedValues.clear();
+  for (auto &Arg : TheFunction->args())
+    NamedValues[Arg.getName()] = &Arg;
+
+  if (Value *RetVal = Body->codegen()) {
+    // Finish off the function.
+    Builder.CreateRet(RetVal);
+
+    // Validate the generated code, checking for consistency.
+    verifyFunction(*TheFunction);
+
+    return TheFunction;
+  }
+
+  // Error reading body, remove function.
+  TheFunction->eraseFromParent();
+  return nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // Main driver code.
